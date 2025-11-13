@@ -1,0 +1,44 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler
+
+class DataProcessor:
+    x_train, x_test, y_train, y_test, x_val, y_val  = None, None, None, None, None, None
+    def __init__(self, data, transformer):
+        self.data =  transformer(data)
+
+    def preprocess(self):
+        base_cols = [col for col in self.data.columns if (col.startswith('R') or col.startswith('P')) and col != 'Peso do sistema']
+        all_cols = base_cols + ['Delta yaw neutro']
+        x = self.data[all_cols].copy()
+        y = x.pop('Delta yaw neutro').values
+        normalized_x = StandardScaler().fit(x).transform(x)
+        return normalized_x, y
+    
+    def condition_func_test_train(self,series):
+        return series < 3.5
+    
+    def condition_func_val(self,series):
+        return series < 3
+
+    def split_data(self, test_size=0.2, val_size=0.2, random_state=4):
+        x, y = self.preprocess()
+        x_temp, x_test, y_temp, y_test = train_test_split(x, y, test_size=test_size, random_state=random_state)
+        val_relative_size = val_size / (1 - test_size)
+        x_train, x_val, y_train, y_val = train_test_split(x_temp, y_temp, test_size=val_relative_size, random_state=random_state)
+        # Assign raw arrays to instance attributes
+        self.x_train, self.x_val, self.x_test = x_train, x_val, x_test
+        self.y_train, self.y_val, self.y_test = y_train, y_val, y_test
+        # Transform targets to binary
+        self.y_train = self.transform_column_in_binary_category(self.y_train, self.condition_func_test_train)
+        self.y_val   = self.transform_column_in_binary_category(self.y_val, self.condition_func_val)
+        self.y_test  = self.transform_column_in_binary_category(self.y_test, self.condition_func_test_train)
+        return self.x_train, self.x_val, self.x_test, self.y_train, self.y_val, self.y_test
+
+    def transform_column_in_binary_category(self, y, condition_func):
+        y_arr = np.asarray(y)
+        mask = condition_func(y_arr)
+        mask = np.asarray(mask, dtype=bool)
+        return mask.astype(int)
+    
